@@ -55,6 +55,30 @@ export async function getProspects(): Promise<Prospect[]> {
   return data as Prospect[]
 }
 
+export async function getProspectsPage(params: {
+  page: number
+  limit: number
+  statut?: string
+  search?: string
+}): Promise<{ data: Prospect[]; count: number }> {
+  const { page, limit, statut, search } = params
+  const from = (page - 1) * limit
+  const to = from + limit - 1
+
+  let query = supabase
+    .from('prospects')
+    .select('*', { count: 'exact' })
+    .order('date_creation', { ascending: false })
+    .range(from, to)
+
+  if (statut) query = query.eq('statut', statut)
+  if (search) query = query.ilike('nom', `%${search}%`)
+
+  const { data, error, count } = await query
+  if (error) throw error
+  return { data: data as Prospect[], count: count ?? 0 }
+}
+
 export async function updateProspect(
   id: string,
   updates: Partial<Omit<Prospect, 'id' | 'date_creation'>>
