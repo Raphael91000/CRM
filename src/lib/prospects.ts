@@ -1,0 +1,145 @@
+import { supabase } from './supabase'
+
+export type Statut =
+  | 'nouveau'
+  | 'nrp'
+  | 'a_rappeler'
+  | 'rdv'
+  | 'no_show'
+  | 'demo_envoyee'
+  | 'pas_interesse'
+  | 'deja_site'
+  | 'close'
+  | 'poubelle'
+
+export type Prospect = {
+  id: string
+  nom: string
+  telephone: string
+  departement: string
+  statut: Statut
+  nb_tentatives: number
+  derniere_relance: string | null
+  prochaine_relance: string | null
+  note: string | null
+  fiche_google: string | null
+  import_id: string | null
+  date_creation: string
+}
+
+export type NewProspect = {
+  nom: string
+  telephone: string
+  departement: string
+  statut: Statut
+  note?: string | null
+  fiche_google?: string | null
+  nb_tentatives?: number
+  derniere_relance?: string | null
+  prochaine_relance?: string | null
+}
+
+export type Import = {
+  id: string
+  nom_fichier: string
+  date_import: string
+  nb_prospects: number
+}
+
+export async function getProspects(): Promise<Prospect[]> {
+  const { data, error } = await supabase
+    .from('prospects')
+    .select('*')
+    .order('date_creation', { ascending: false })
+  if (error) throw error
+  return data as Prospect[]
+}
+
+export async function updateProspect(
+  id: string,
+  updates: Partial<Omit<Prospect, 'id' | 'date_creation'>>
+): Promise<Prospect> {
+  const { data, error } = await supabase
+    .from('prospects')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data as Prospect
+}
+
+export async function addProspect(prospect: NewProspect): Promise<Prospect> {
+  const { data, error } = await supabase
+    .from('prospects')
+    .insert({
+      nom: prospect.nom,
+      telephone: prospect.telephone,
+      departement: prospect.departement,
+      statut: prospect.statut,
+      note: prospect.note ?? null,
+      fiche_google: prospect.fiche_google ?? null,
+      nb_tentatives: prospect.nb_tentatives ?? 0,
+      derniere_relance: prospect.derniere_relance ?? null,
+      prochaine_relance: prospect.prochaine_relance ?? null,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data as Prospect
+}
+
+export async function bulkAddProspects(
+  rows: NewProspect[],
+  fileName: string
+): Promise<number> {
+  // Create the import record first
+  const { data: imp, error: impErr } = await supabase
+    .from('imports')
+    .insert({ nom_fichier: fileName, nb_prospects: rows.length })
+    .select('id')
+    .single()
+  if (impErr) throw impErr
+
+  const importId = imp.id
+
+  const { data, error } = await supabase
+    .from('prospects')
+    .insert(
+      rows.map(r => ({
+        nom: r.nom,
+        telephone: r.telephone,
+        departement: r.departement ?? '',
+        statut: r.statut ?? 'nouveau',
+        note: r.note ?? null,
+        fiche_google: r.fiche_google ?? null,
+        nb_tentatives: r.nb_tentatives ?? 0,
+        derniere_relance: r.derniere_relance ?? null,
+        prochaine_relance: r.prochaine_relance ?? null,
+        import_id: importId,
+      }))
+    )
+    .select('id')
+  if (error) throw error
+  return data?.length ?? 0
+}
+
+export async function deleteProspect(id: string): Promise<void> {
+  const { error } = await supabase.from('prospects').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function getImports(): Promise<Import[]> {
+  const { data, error } = await supabase
+    .from('imports')
+    .select('*')
+    .order('date_import', { ascending: false })
+  if (error) throw error
+  return data as Import[]
+}
+
+export async function deleteImport(id: string): Promise<void> {
+  await supabase.from('prospects').delete().eq('import_id', id)
+  const { error } = await supabase.from('imports').delete().eq('id', id)
+  if (error) throw error
+}
