@@ -4,8 +4,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Prospect, Statut } from '@/lib/prospects'
 import { getStatutColor, getStatutConfig } from './StatusBadge'
 
-const NRP_MAX = 3
-
 type Props = {
   prospect: Prospect
   onClose: () => void
@@ -22,12 +20,7 @@ export default function CallModal({ prospect, onClose, onSave }: Props) {
   const noteRef = useRef<HTMLTextAreaElement>(null)
 
   const nextNrp = (prospect.nb_tentatives ?? 0) + 1
-  const isLastNrp = nextNrp >= NRP_MAX
-  const nrpLabel = nextNrp === 1
-    ? 'NRP — 1er appel'
-    : isLastNrp
-      ? `NRP x${nextNrp} → Poubelle`
-      : `NRP x${nextNrp}`
+  const nrpLabel = nextNrp === 1 ? 'NRP — 1er appel' : `NRP x${nextNrp}`
 
   useEffect(() => {
     noteRef.current?.focus()

@@ -8,13 +8,6 @@ import AddProspectModal from '@/components/AddProspectModal'
 import { useToast } from '@/components/ToastProvider'
 
 const DAILY_GOAL = 150
-const NRP_URGENCE_HOURS = 48   // après 48h sans réponse → urgence
-const NRP_MAX_ATTEMPTS  = 3    // après 3 NRP → poubelle automatique
-
-function hoursAgo(d: string | null): number {
-  if (!d) return 0
-  return (Date.now() - new Date(d).getTime()) / 36e5
-}
 
 function isToday(d: string | null) {
   if (!d) return false
@@ -30,14 +23,6 @@ function isDueToday(d: string | null) {
 
 function fmtTime(d: string) {
   return new Date(d).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-}
-
-function fmtRelative(d: string | null): string {
-  if (!d) return ''
-  const h = hoursAgo(d)
-  if (h < 1) return 'il y a moins d\'1h'
-  if (h < 24) return `il y a ${Math.floor(h)}h`
-  return `il y a ${Math.floor(h / 24)}j`
 }
 
 // ── Progress bar ──────────────────────────────────────────────────────────────
@@ -252,41 +237,14 @@ export default function DashboardPage() {
 
   async function handleSaveCall(id: string, statut: Statut, note: string, prochaine: string) {
     const current = prospects.find(p => p.id === id)
-    const newAttempts = (current?.nb_tentatives ?? 0) + 1
-
-    // Auto-poubelle : 3e appel NRP
-    const finalStatut: Statut =
-      statut === 'nrp' && newAttempts >= NRP_MAX_ATTEMPTS ? 'poubelle' : statut
-
     await updateProspect(id, {
-      statut: finalStatut,
+      statut,
       note: note || null,
       derniere_relance: new Date().toISOString(),
       prochaine_relance: prochaine ? new Date(prochaine).toISOString() : null,
-      nb_tentatives: newAttempts,
+      nb_tentatives: (current?.nb_tentatives ?? 0) + 1,
     })
-
-    if (finalStatut === 'poubelle') {
-      toast(`${current?.nom} passe en Poubelle (${NRP_MAX_ATTEMPTS} appels sans reponse)`, 'info')
-    } else {
-      toast('Appel enregistre')
-    }
-    await load()
-  }
-
-  async function handleQuickNrp(prospect: Prospect) {
-    const newAttempts = (prospect.nb_tentatives ?? 0) + 1
-    const finalStatut: Statut = newAttempts >= NRP_MAX_ATTEMPTS ? 'poubelle' : 'nrp'
-    await updateProspect(prospect.id, {
-      statut: finalStatut,
-      derniere_relance: new Date().toISOString(),
-      nb_tentatives: newAttempts,
-    })
-    if (finalStatut === 'poubelle') {
-      toast(`${prospect.nom} → Poubelle (3 NRP)`, 'info')
-    } else {
-      toast(`NRP ${newAttempts} enregistre — ${prospect.nom}`)
-    }
+    toast('Appel enregistre')
     await load()
   }
 
@@ -316,9 +274,6 @@ export default function DashboardPage() {
   const dernierAppel = callTimes.length > 0 ? fmtTime(new Date(Math.max(...callTimes)).toISOString()) : '—'
 
   // Sections
-  const nrpUrgents = prospects.filter(
-    p => p.statut === 'nrp' && hoursAgo(p.derniere_relance) >= NRP_URGENCE_HOURS && p.nb_tentatives < NRP_MAX_ATTEMPTS
-  )
   const rdvAujourdhui = prospects.filter(p => p.statut === 'rdv' && isDueToday(p.prochaine_relance))
   const aRappeler     = prospects.filter(p => p.statut === 'a_rappeler' && isDueToday(p.prochaine_relance))
   const noShow        = prospects.filter(p => p.statut === 'no_show')
@@ -380,17 +335,6 @@ export default function DashboardPage() {
         onCall={setSelected}
         onPoubelle={handlePoubelle}
         emptyText="Aucun no show."
-      />
-
-      {/* Urgence NRP */}
-      <Section
-        title="Urgence — NRP a relancer"
-        count={nrpUrgents.length}
-        prospects={nrpUrgents}
-        onCall={setSelected}
-        onPoubelle={handlePoubelle}
-        emptyText="Aucun NRP en attente de relance."
-        urgent
       />
 
       {/* A rappeler aujourd'hui */}
