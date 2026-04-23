@@ -7,6 +7,7 @@ export type Statut =
   | 'rdv'
   | 'no_show'
   | 'demo_envoyee'
+  | 'en_attente'
   | 'pas_interesse'
   | 'deja_site'
   | 'close'

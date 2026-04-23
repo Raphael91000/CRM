@@ -9,6 +9,7 @@ const CONFIG: Record<Statut, Config> = {
   rdv:           { label: 'RDV',           color: '#22c55e', classes: 'bg-green-500/15 text-green-400 border-green-500/30' },
   no_show:       { label: 'No show',       color: '#eab308', classes: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30' },
   demo_envoyee:  { label: 'Demo envoyee',  color: '#8b5cf6', classes: 'bg-violet-500/15 text-violet-400 border-violet-500/30' },
+  en_attente:    { label: 'En attente',    color: '#f59e0b', classes: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
   pas_interesse: { label: 'Pas interesse', color: '#6b7280', classes: 'bg-gray-500/15 text-gray-400 border-gray-500/30' },
   deja_site:     { label: 'Deja site',     color: '#a78bfa', classes: 'bg-purple-400/10 text-purple-300 border-purple-400/20' },
   close:         { label: 'Close',         color: '#10b981', classes: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
@@ -23,7 +24,7 @@ export function getStatutColor(statut: Statut): string {
   return CONFIG[statut]?.color ?? '#6b7280'
 }
 
-export const CALL_STATUTS: Statut[] = ['nrp', 'a_rappeler', 'rdv', 'no_show', 'demo_envoyee', 'pas_interesse', 'deja_site', 'close']
+export const CALL_STATUTS: Statut[] = ['nrp', 'a_rappeler', 'rdv', 'no_show', 'demo_envoyee', 'en_attente', 'pas_interesse', 'deja_site', 'close']
 
 export const ALL_STATUTS = Object.entries(CONFIG).map(([value, cfg]) => ({
   value: value as Statut,
@@ -38,6 +39,7 @@ export const SIDEBAR_CATEGORIES: { statut: Statut | null; label: string }[] = [
   { statut: 'rdv',           label: 'RDV' },
   { statut: 'no_show',       label: 'No show' },
   { statut: 'demo_envoyee',  label: 'Demo envoyee' },
+  { statut: 'en_attente',    label: 'En attente' },
   { statut: 'pas_interesse', label: 'Pas interesse' },
   { statut: 'deja_site',     label: 'Deja site' },
   { statut: 'close',         label: 'Close' },

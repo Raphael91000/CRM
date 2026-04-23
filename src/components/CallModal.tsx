@@ -10,7 +10,7 @@ type Props = {
   onSave: (id: string, statut: Statut, note: string, prochaine: string) => Promise<void>
 }
 
-const OTHER_STATUTS: Statut[] = ['a_rappeler', 'rdv', 'no_show', 'demo_envoyee', 'pas_interesse', 'deja_site', 'close', 'poubelle']
+const OTHER_STATUTS: Statut[] = ['a_rappeler', 'rdv', 'no_show', 'demo_envoyee', 'en_attente', 'pas_interesse', 'deja_site', 'close', 'poubelle']
 
 export default function CallModal({ prospect, onClose, onSave }: Props) {
   const [statut, setStatut] = useState<Statut>('nrp')
