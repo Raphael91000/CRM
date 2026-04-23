@@ -103,11 +103,7 @@ function ProspectCard({
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-white truncate">{prospect.nom}</span>
           {nb > 0 && (
-            <span className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 border ${
-              nb >= NRP_MAX_ATTEMPTS - 1
-                ? 'bg-red-500/15 text-red-400 border-red-500/30'
-                : 'bg-orange-500/15 text-orange-400 border-orange-500/30'
-            }`}>
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full shrink-0 border bg-orange-500/15 text-orange-400 border-orange-500/30">
               NRP x{nb}
             </span>
           )}
