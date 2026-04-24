@@ -15,7 +15,7 @@ import { useToast } from '@/components/ToastProvider'
 
 const PAGE_SIZE = 50
 
-type SortCol = 'nom' | 'telephone' | 'departement' | 'statut' | 'nb_tentatives' | 'derniere_relance' | 'date_creation'
+type SortCol = 'nom' | 'telephone' | 'departement' | 'statut' | 'nb_tentatives' | 'derniere_relance' | 'prochaine_relance' | 'date_creation'
 
 function formatDate(d: string | null) {
   if (!d) return '—'
@@ -133,6 +133,15 @@ function ProspectsInner() {
 
   useEffect(() => { setPage(1); setSelected(new Set()) }, [filterStatut, debouncedSearch, filterDept, sort])
 
+  // Auto-sort by prochaine_relance asc when viewing NRP
+  useEffect(() => {
+    if (filterStatut === 'nrp') {
+      setSort({ col: 'prochaine_relance', dir: 'asc' })
+    } else {
+      setSort({ col: 'date_creation', dir: 'desc' })
+    }
+  }, [filterStatut])
+
   // Auto-reset confirm delete after 4 seconds
   useEffect(() => {
     if (!confirmDelete) return
@@ -215,7 +224,7 @@ function ProspectsInner() {
         note: note || null,
         derniere_relance: new Date().toISOString(),
         prochaine_relance: prochaine ? new Date(prochaine).toISOString() : null,
-        nb_tentatives: (current?.nb_tentatives ?? 0) + 1,
+        nb_tentatives: statut === 'nrp' ? (current?.nb_tentatives ?? 0) + 1 : 0,
       }),
       addAppel({ prospectId: id, statut, note }),
     ])
@@ -401,7 +410,10 @@ function ProspectsInner() {
               <SortHeader label="Dépt" col="departement" sort={sort} onSort={toggleSort} />
               <SortHeader label="Statut" col="statut" sort={sort} onSort={toggleSort} />
               <span className="text-xs font-medium text-gray-500 uppercase tracking-wider text-center">Appels</span>
-              <SortHeader label="Dernière" col="derniere_relance" sort={sort} onSort={toggleSort} />
+              {filterStatut === 'nrp'
+                ? <SortHeader label="Prochain appel" col="prochaine_relance" sort={sort} onSort={toggleSort} />
+                : <SortHeader label="Dernière" col="derniere_relance" sort={sort} onSort={toggleSort} />
+              }
               <span className="text-xs font-medium text-gray-500 uppercase tracking-wider text-right">Actions</span>
             </div>
 
@@ -447,7 +459,17 @@ function ProspectsInner() {
                     <span className="text-xs text-gray-500 truncate">{p.departement || '—'}</span>
                     <StatusBadge statut={p.statut} />
                     <span className="text-sm text-gray-500 text-center">{p.nb_tentatives}</span>
-                    <span className="text-xs text-gray-600">{formatDate(p.derniere_relance)}</span>
+                    {filterStatut === 'nrp' ? (() => {
+                      if (!p.prochaine_relance) return <span className="text-xs text-gray-700">—</span>
+                      const d = new Date(p.prochaine_relance)
+                      const isToday = d.toDateString() === new Date().toDateString()
+                      const isPast = d < new Date()
+                      return (
+                        <span className={`text-xs font-medium ${isPast || isToday ? 'text-orange-400' : 'text-gray-400'}`}>
+                          {isToday ? 'Aujourd\'hui ' : ''}{d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} {d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )
+                    })() : <span className="text-xs text-gray-600">{formatDate(p.derniere_relance)}</span>}
                     <div className="flex items-center justify-end gap-1.5">
                       <button onClick={() => setModalProspect(p)}
                         className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white text-xs font-semibold rounded-lg transition-all shrink-0">

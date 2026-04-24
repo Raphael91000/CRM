@@ -22,10 +22,27 @@ function fmtDate(d: string) {
   })
 }
 
+function skipWeekend(d: Date): Date {
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1)
+  return d
+}
+
+function suggestNrpDate(nbTentatives: number): string {
+  const now = new Date()
+  const daysToAdd = nbTentatives === 0 ? 1 : nbTentatives === 1 ? 3 : 7
+  const nextHour = now.getHours() < 12 ? 14 : 10
+  const nextMinute = now.getHours() < 12 ? 30 : 0
+  const next = new Date(now)
+  next.setDate(next.getDate() + daysToAdd)
+  next.setHours(nextHour, nextMinute, 0, 0)
+  skipWeekend(next)
+  return next.toISOString().slice(0, 16)
+}
+
 export default function CallModal({ prospect, onClose, onSave }: Props) {
   const [statut, setStatut] = useState<Statut>('nrp')
   const [note, setNote] = useState('')
-  const [prochaine, setProchaine] = useState(prospect.prochaine_relance?.slice(0, 16) ?? '')
+  const [prochaine, setProchaine] = useState(suggestNrpDate(prospect.nb_tentatives ?? 0))
   const [saving, setSaving] = useState(false)
   const [historique, setHistorique] = useState<Appel[]>([])
   const [showHistorique, setShowHistorique] = useState(false)
@@ -38,6 +55,17 @@ export default function CallModal({ prospect, onClose, onSave }: Props) {
     noteRef.current?.focus()
     getAppels(prospect.id).then(setHistorique).catch(() => {})
   }, [prospect.id])
+
+  // Auto-suggest date when switching statut
+  useEffect(() => {
+    if (statut === 'nrp') {
+      setProchaine(suggestNrpDate(prospect.nb_tentatives ?? 0))
+    } else if (statut === 'a_rappeler' || statut === 'rdv' || statut === 'no_show' || statut === 'en_attente') {
+      setProchaine(prospect.prochaine_relance?.slice(0, 16) ?? '')
+    } else {
+      setProchaine('')
+    }
+  }, [statut])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -222,13 +250,20 @@ export default function CallModal({ prospect, onClose, onSave }: Props) {
           />
 
           {/* Prochaine relance */}
-          {(statut === 'a_rappeler' || statut === 'rdv' || statut === 'no_show' || statut === 'en_attente') && (
-            <input
-              type="datetime-local"
-              value={prochaine}
-              onChange={e => setProchaine(e.target.value)}
-              className="w-full bg-gray-800/40 border border-gray-700/50 rounded-xl px-4 py-3 text-sm text-gray-100 focus:outline-none focus:border-blue-500/40 transition-colors [color-scheme:dark]"
-            />
+          {(statut === 'nrp' || statut === 'a_rappeler' || statut === 'rdv' || statut === 'no_show' || statut === 'en_attente') && (
+            <div className="space-y-1.5">
+              <input
+                type="datetime-local"
+                value={prochaine}
+                onChange={e => setProchaine(e.target.value)}
+                className="w-full bg-gray-800/40 border border-gray-700/50 rounded-xl px-4 py-3 text-sm text-gray-100 focus:outline-none focus:border-blue-500/40 transition-colors [color-scheme:dark]"
+              />
+              {statut === 'nrp' && (
+                <p className="text-[11px] text-gray-600 px-1">
+                  Suggestion : {nextNrp === 1 ? 'J+1' : nextNrp === 2 ? 'J+3' : 'J+7'}, créneau inversé · week-end ignoré
+                </p>
+              )}
+            </div>
           )}
         </div>
 
