@@ -76,6 +76,11 @@ export default function SessionPage() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSave()
+      if (e.key === 'g' && (e.ctrlKey || e.metaKey) && current?.fiche_google) {
+        e.preventDefault()
+        window.open(current.fiche_google, '_blank')
+        return
+      }
       const target = e.target as HTMLElement
       if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT') return
       const di = DIGITS.indexOf(e.key)
@@ -377,7 +382,7 @@ export default function SessionPage() {
             {saving ? 'Enregistrement...' : `Enregistrer — ${getStatutConfig(statut).label}`}
           </button>
         </div>
-        <p className="text-center text-[11px] text-gray-700 pb-4">1–0 statut · Ctrl+Entrée enregistrer</p>
+        <p className="text-center text-[11px] text-gray-700 pb-4">1–0 statut · ⌘G fiche · Ctrl+Entrée enregistrer</p>
       </div>
     </div>
   )

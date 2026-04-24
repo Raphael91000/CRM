@@ -43,6 +43,11 @@ export default function CallModal({ prospect, onClose, onSave }: Props) {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSave()
+      if (e.key === 'g' && (e.ctrlKey || e.metaKey) && prospect.fiche_google) {
+        e.preventDefault()
+        window.open(prospect.fiche_google, '_blank')
+        return
+      }
       // digit shortcuts — skip if user is typing in a text field
       const target = e.target as HTMLElement
       if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT') return
@@ -244,7 +249,7 @@ export default function CallModal({ prospect, onClose, onSave }: Props) {
             {saving ? 'Enregistrement...' : `Enregistrer — ${getStatutConfig(statut).label}`}
           </button>
         </div>
-        <p className="text-center text-[11px] text-gray-700 pb-4">1–0 statut · Ctrl+Entrée enregistrer · Échap fermer</p>
+        <p className="text-center text-[11px] text-gray-700 pb-4">1–0 statut · ⌘G fiche · Ctrl+Entrée enregistrer · Échap fermer</p>
       </div>
     </div>
   )

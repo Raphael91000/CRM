@@ -349,6 +349,11 @@ export default function DashboardPage() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (selected) return
+      if (e.key === 'g' && (e.ctrlKey || e.metaKey) && focusedId) {
+        const p = allVisible.find(p => p.id === focusedId)
+        if (p?.fiche_google) { e.preventDefault(); window.open(p.fiche_google, '_blank') }
+        return
+      }
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Enter') return
       if (allVisible.length === 0) return
       e.preventDefault()
