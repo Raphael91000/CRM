@@ -42,9 +42,11 @@ export default function SessionPage() {
     setLoading(true)
     try {
       const all = await getProspects()
+      const now = new Date()
       const q = all.filter(p =>
         SESSION_STATUTS.includes(p.statut) ||
-        (p.statut === 'a_rappeler' && isDueToday(p.prochaine_relance))
+        // À rappeler : seulement si l'heure prévue est passée (pas dans le futur)
+        (p.statut === 'a_rappeler' && p.prochaine_relance && new Date(p.prochaine_relance) <= now)
       )
       q.sort((a, b) => {
         const order = ['rdv', 'a_rappeler', 'no_show', 'nouveau', 'nrp']
@@ -95,7 +97,7 @@ export default function SessionPage() {
           note: note || null,
           derniere_relance: new Date().toISOString(),
           prochaine_relance: prochaine ? new Date(prochaine).toISOString() : null,
-          nb_tentatives: (current.nb_tentatives ?? 0) + 1,
+          nb_tentatives: statut === 'nrp' ? (current.nb_tentatives ?? 0) + 1 : 0,
         }),
         addAppel({ prospectId: current.id, statut, note }),
       ])

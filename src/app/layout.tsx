@@ -5,6 +5,7 @@ import './globals.css'
 import Sidebar from '@/components/Sidebar'
 import ToastProvider from '@/components/ToastProvider'
 import CommandPalette from '@/components/CommandPalette'
+import RappelAlert from '@/components/RappelAlert'
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] })
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {children}
           </main>
           <CommandPalette />
+          <RappelAlert />
         </ToastProvider>
       </body>
     </html>

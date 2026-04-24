@@ -301,7 +301,7 @@ export default function DashboardPage() {
         note: note || null,
         derniere_relance: new Date().toISOString(),
         prochaine_relance: prochaine ? new Date(prochaine).toISOString() : null,
-        nb_tentatives: (current?.nb_tentatives ?? 0) + 1,
+        nb_tentatives: statut === 'nrp' ? (current?.nb_tentatives ?? 0) + 1 : 0,
       }),
       addAppel({ prospectId: id, statut, note }),
     ])
