@@ -175,8 +175,20 @@ export default function Sidebar() {
       </div>
 
       {/* Footer */}
-      <div className="px-5 py-3 border-t border-gray-800">
-        <p className="text-xs text-gray-700">v1.0 · Supabase</p>
+      <div className="px-4 py-3 border-t border-gray-800 space-y-2">
+        <button
+          onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }))}
+          className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg border border-gray-800 hover:border-gray-700 text-gray-600 hover:text-gray-400 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <span className="text-xs">Recherche rapide</span>
+          </div>
+          <kbd className="text-[10px] font-mono">⌘K</kbd>
+        </button>
+        <p className="text-xs text-gray-700 px-1">v1.0 · Supabase</p>
       </div>
     </aside>
   )

@@ -4,6 +4,7 @@ import { Suspense } from 'react'
 import './globals.css'
 import Sidebar from '@/components/Sidebar'
 import ToastProvider from '@/components/ToastProvider'
+import CommandPalette from '@/components/CommandPalette'
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] })
@@ -42,6 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="flex-1 overflow-y-auto">
             {children}
           </main>
+          <CommandPalette />
         </ToastProvider>
       </body>
     </html>
