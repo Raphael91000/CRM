@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
+import { getExistingPhones } from '@/lib/prospects'
 
 export type ImportRow = {
   nom: string
@@ -221,19 +222,28 @@ function parseFile(file: File): Promise<ImportRow[]> {
 export default function ImportModal({ onClose, onImport }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [rows, setRows] = useState<ImportRow[]>([])
+  const [duplicatePhones, setDuplicatePhones] = useState<Set<string>>(new Set())
   const [fileName, setFileName] = useState('')
   const [importing, setSaving] = useState(false)
+  const [skipDuplicates, setSkipDuplicates] = useState(true)
   const [error, setError] = useState('')
   const [dragging, setDragging] = useState(false)
 
   async function handleFile(file: File) {
     setError('')
     setFileName(file.name)
+    setDuplicatePhones(new Set())
     try {
-      const parsed = await parseFile(file)
+      const [parsed, existingPhones] = await Promise.all([parseFile(file), getExistingPhones()])
       setRows(parsed)
+      const dupes = new Set(
+        parsed
+          .map(r => r.telephone.replace(/\s/g, ''))
+          .filter(tel => existingPhones.has(tel))
+      )
+      setDuplicatePhones(dupes)
     } catch {
-      setError('Impossible de lire ce fichier. Verifiez le format.')
+      setError('Impossible de lire ce fichier. Vérifiez le format.')
       setRows([])
     }
   }
@@ -249,12 +259,18 @@ export default function ImportModal({ onClose, onImport }: Props) {
     if (rows.length === 0) return
     setSaving(true)
     try {
-      await onImport(rows, fileName)
+      const toImport = skipDuplicates && duplicatePhones.size > 0
+        ? rows.filter(r => !duplicatePhones.has(r.telephone.replace(/\s/g, '')))
+        : rows
+      await onImport(toImport, fileName)
       onClose()
     } finally {
       setSaving(false)
     }
   }
+
+  const duplicateCount = duplicatePhones.size
+  const importCount = skipDuplicates ? rows.length - duplicateCount : rows.length
 
   const preview = rows.slice(0, 5)
 
@@ -348,6 +364,27 @@ export default function ImportModal({ onClose, onImport }: Props) {
           </div>
         )}
 
+        {/* Avertissement doublons */}
+        {duplicateCount > 0 && (
+          <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl px-4 py-3 space-y-2">
+            <p className="text-sm font-medium text-orange-400">
+              {duplicateCount} doublon{duplicateCount > 1 ? 's' : ''} détecté{duplicateCount > 1 ? 's' : ''} — numéro{duplicateCount > 1 ? 's' : ''} déjà en base
+            </p>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+                <input type="radio" checked={skipDuplicates} onChange={() => setSkipDuplicates(true)}
+                  className="accent-blue-500" />
+                Ignorer les doublons ({rows.length - duplicateCount} importés)
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+                <input type="radio" checked={!skipDuplicates} onChange={() => setSkipDuplicates(false)}
+                  className="accent-blue-500" />
+                Tout importer ({rows.length})
+              </label>
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex gap-3 pt-1">
           <button
@@ -358,14 +395,14 @@ export default function ImportModal({ onClose, onImport }: Props) {
           </button>
           <button
             onClick={handleImport}
-            disabled={importing || rows.length === 0}
+            disabled={importing || importCount === 0}
             className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {importing
               ? 'Import en cours...'
-              : rows.length > 0
-                ? `Importer ${rows.length} prospect${rows.length > 1 ? 's' : ''}`
-                : 'Importer'}
+              : importCount > 0
+                ? `Importer ${importCount} prospect${importCount > 1 ? 's' : ''}`
+                : 'Aucun prospect à importer'}
           </button>
         </div>
       </div>

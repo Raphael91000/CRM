@@ -1,17 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { Appel, Prospect, Statut, getAppels } from '@/lib/prospects'
-import { getStatutColor, getStatutConfig } from './StatusBadge'
+import { useCallback, useEffect, useState } from 'react'
+import { getProspects, updateProspect, addAppel, Prospect, Statut, Appel, getAppels } from '@/lib/prospects'
+import { getStatutColor, getStatutConfig } from '@/components/StatusBadge'
+import { useToast } from '@/components/ToastProvider'
+import Link from 'next/link'
 
-type Props = {
-  prospect: Prospect
-  onClose: () => void
-  onSave: (id: string, statut: Statut, note: string, prochaine: string) => Promise<void>
-}
-
+const SESSION_STATUTS: Statut[] = ['nouveau', 'nrp', 'no_show']
 const OTHER_STATUTS: Statut[] = ['a_rappeler', 'rdv', 'no_show', 'demo_envoyee', 'en_attente', 'pas_interesse', 'deja_site', 'close', 'poubelle']
-// digit 1 = nrp, digits 2-0 = OTHER_STATUTS in order
 const DIGIT_STATUTS: Statut[] = ['nrp', ...OTHER_STATUTS]
 const DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']
 
@@ -22,28 +18,62 @@ function fmtDate(d: string) {
   })
 }
 
-export default function CallModal({ prospect, onClose, onSave }: Props) {
+function isDueToday(d: string | null) {
+  if (!d) return false
+  const endOfDay = new Date()
+  endOfDay.setHours(23, 59, 59, 999)
+  return new Date(d) <= endOfDay
+}
+
+export default function SessionPage() {
+  const [queue, setQueue] = useState<Prospect[]>([])
+  const [index, setIndex] = useState(0)
+  const [done, setDone] = useState(0)
+  const [loading, setLoading] = useState(true)
   const [statut, setStatut] = useState<Statut>('nrp')
   const [note, setNote] = useState('')
-  const [prochaine, setProchaine] = useState(prospect.prochaine_relance?.slice(0, 16) ?? '')
+  const [prochaine, setProchaine] = useState('')
   const [saving, setSaving] = useState(false)
   const [historique, setHistorique] = useState<Appel[]>([])
-  const [showHistorique, setShowHistorique] = useState(false)
-  const noteRef = useRef<HTMLTextAreaElement>(null)
+  const [showHisto, setShowHisto] = useState(false)
+  const { toast } = useToast()
 
-  const nextNrp = (prospect.nb_tentatives ?? 0) + 1
-  const nrpLabel = nextNrp === 1 ? 'NRP — 1er appel' : `NRP x${nextNrp}`
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const all = await getProspects()
+      const q = all.filter(p =>
+        SESSION_STATUTS.includes(p.statut) ||
+        (p.statut === 'a_rappeler' && isDueToday(p.prochaine_relance))
+      )
+      q.sort((a, b) => {
+        const order = ['rdv', 'a_rappeler', 'no_show', 'nouveau', 'nrp']
+        return order.indexOf(a.statut) - order.indexOf(b.statut)
+      })
+      setQueue(q)
+      setIndex(0)
+      setDone(0)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const current = queue[index] ?? null
 
   useEffect(() => {
-    noteRef.current?.focus()
-    getAppels(prospect.id).then(setHistorique).catch(() => {})
-  }, [prospect.id])
+    if (!current) return
+    setStatut('nrp')
+    setNote('')
+    setProchaine(current.prochaine_relance?.slice(0, 16) ?? '')
+    setShowHisto(false)
+    getAppels(current.id).then(setHistorique).catch(() => {})
+  }, [current?.id])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSave()
-      // digit shortcuts — skip if user is typing in a text field
       const target = e.target as HTMLElement
       if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT') return
       const di = DIGITS.indexOf(e.key)
@@ -56,54 +86,153 @@ export default function CallModal({ prospect, onClose, onSave }: Props) {
   })
 
   async function handleSave() {
-    if (saving) return
+    if (!current || saving) return
     setSaving(true)
     try {
-      await onSave(prospect.id, statut, note, prochaine)
-      onClose()
+      await Promise.all([
+        updateProspect(current.id, {
+          statut,
+          note: note || null,
+          derniere_relance: new Date().toISOString(),
+          prochaine_relance: prochaine ? new Date(prochaine).toISOString() : null,
+          nb_tentatives: (current.nb_tentatives ?? 0) + 1,
+        }),
+        addAppel({ prospectId: current.id, statut, note }),
+      ])
+      toast('Appel enregistré')
+      setDone(d => d + 1)
+      if (index + 1 >= queue.length) {
+        setIndex(queue.length)
+      } else {
+        setIndex(i => i + 1)
+      }
     } finally {
       setSaving(false)
     }
   }
 
+  function handleSkip() {
+    if (index + 1 >= queue.length) {
+      setIndex(queue.length)
+    } else {
+      setIndex(i => i + 1)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-96">
+        <div className="flex items-center gap-3 text-gray-500">
+          <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          Chargement de la session...
+        </div>
+      </div>
+    )
+  }
+
+  // End of queue
+  if (!current) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-96 gap-6 text-center p-6">
+        <div className="w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+          <svg className="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold text-white">Session terminée</h2>
+          <p className="text-gray-400 mt-1">
+            {done} appel{done !== 1 ? 's' : ''} passé{done !== 1 ? 's' : ''} · {queue.length - done} ignoré{queue.length - done !== 1 ? 's' : ''}
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={load}
+            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors"
+          >
+            Nouvelle session
+          </button>
+          <Link
+            href="/"
+            className="px-5 py-2.5 rounded-xl border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-600 text-sm font-medium transition-colors"
+          >
+            Retour dashboard
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  const nb = current.nb_tentatives ?? 0
+  const nrpLabel = nb === 0 ? 'NRP — 1er appel' : `NRP x${nb + 1}`
   const saveColor = getStatutColor(statut)
+  const progress = queue.length > 0 ? (index / queue.length) * 100 : 0
 
   return (
-    <div
-      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-[#0f172a] border border-gray-700/60 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
-        onClick={e => e.stopPropagation()}
-      >
+    <div className="max-w-2xl mx-auto p-6 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-white">Mode session</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {index + 1} / {queue.length} · {done} appelé{done !== 1 ? 's' : ''}
+          </p>
+        </div>
+        <Link
+          href="/"
+          className="text-sm text-gray-500 hover:text-gray-300 transition-colors"
+        >
+          ← Quitter
+        </Link>
+      </div>
+
+      {/* Progress bar */}
+      <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+        <div
+          className="h-full bg-blue-500 rounded-full transition-all duration-500"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
+      {/* Prospect card */}
+      <div className="bg-[#0f172a] border border-gray-700/60 rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="px-6 pt-5 pb-4 border-b border-gray-800">
-          <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <h2 className="text-xl font-bold text-white truncate">{prospect.nom}</h2>
+              <h2 className="text-xl font-bold text-white truncate">{current.nom}</h2>
+              {current.departement && (
+                <p className="text-xs text-gray-500 mt-0.5">{current.departement}</p>
+              )}
             </div>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors ml-3 shrink-0 text-lg leading-none"
+            <span
+              className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border"
+              style={{
+                color: getStatutColor(current.statut),
+                borderColor: `${getStatutColor(current.statut)}40`,
+                backgroundColor: `${getStatutColor(current.statut)}15`,
+              }}
             >
-              ×
-            </button>
+              {getStatutConfig(current.statut).label}
+            </span>
           </div>
 
           <div className="flex items-center gap-3 mt-3 flex-wrap">
             <a
-              href={`tel:${prospect.telephone.replace(/\s/g, '')}`}
-              className="flex items-center gap-2 text-lg font-bold text-blue-400 hover:text-blue-300 transition-colors"
+              href={`tel:${current.telephone.replace(/\s/g, '')}`}
+              className="flex items-center gap-2 text-xl font-bold text-blue-400 hover:text-blue-300 transition-colors"
             >
-              <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 shrink-0" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
               </svg>
-              {prospect.telephone}
+              {current.telephone}
             </a>
-            {prospect.fiche_google && (
+            {current.fiche_google && (
               <a
-                href={prospect.fiche_google}
+                href={current.fiche_google}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500/15 hover:bg-green-500/25 border border-green-500/30 text-green-400 text-sm font-semibold rounded-lg transition-colors"
@@ -117,26 +246,24 @@ export default function CallModal({ prospect, onClose, onSave }: Props) {
             )}
           </div>
 
-          {/* Résumé appels + bouton historique */}
-          {prospect.nb_tentatives > 0 && (
+          {nb > 0 && (
             <div className="flex items-center justify-between mt-2">
               <p className="text-xs text-gray-600">
-                {prospect.nb_tentatives} appel{prospect.nb_tentatives > 1 ? 's' : ''} précédent{prospect.nb_tentatives > 1 ? 's' : ''}
-                {prospect.derniere_relance && ` · dernier le ${new Date(prospect.derniere_relance).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`}
+                {nb} appel{nb > 1 ? 's' : ''} précédent{nb > 1 ? 's' : ''}
+                {current.derniere_relance && ` · dernier le ${new Date(current.derniere_relance).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`}
               </p>
               {historique.length > 0 && (
                 <button
-                  onClick={() => setShowHistorique(h => !h)}
+                  onClick={() => setShowHisto(h => !h)}
                   className="text-xs text-blue-500 hover:text-blue-400 transition-colors shrink-0 ml-2"
                 >
-                  {showHistorique ? 'Masquer' : 'Voir historique'}
+                  {showHisto ? 'Masquer' : 'Voir historique'}
                 </button>
               )}
             </div>
           )}
 
-          {/* Historique des appels */}
-          {showHistorique && historique.length > 0 && (
+          {showHisto && historique.length > 0 && (
             <div className="mt-3 space-y-1.5 max-h-40 overflow-y-auto pr-1">
               {historique.map(a => {
                 const cfg = getStatutConfig(a.statut as Statut)
@@ -155,6 +282,10 @@ export default function CallModal({ prospect, onClose, onSave }: Props) {
                 )
               })}
             </div>
+          )}
+
+          {current.note && (
+            <p className="text-xs text-gray-500 mt-2 bg-gray-800/40 rounded-lg px-3 py-2">{current.note}</p>
           )}
         </div>
 
@@ -206,9 +337,8 @@ export default function CallModal({ prospect, onClose, onSave }: Props) {
             })}
           </div>
 
-          {/* Note de l'appel */}
+          {/* Note */}
           <textarea
-            ref={noteRef}
             value={note}
             onChange={e => setNote(e.target.value)}
             rows={2}
@@ -230,10 +360,10 @@ export default function CallModal({ prospect, onClose, onSave }: Props) {
         {/* Actions */}
         <div className="px-6 pb-5 flex gap-3">
           <button
-            onClick={onClose}
+            onClick={handleSkip}
             className="py-2.5 px-5 rounded-xl border border-gray-700 text-sm font-medium text-gray-400 hover:text-gray-200 hover:border-gray-600 transition-colors"
           >
-            Annuler
+            Passer
           </button>
           <button
             onClick={handleSave}
@@ -244,7 +374,7 @@ export default function CallModal({ prospect, onClose, onSave }: Props) {
             {saving ? 'Enregistrement...' : `Enregistrer — ${getStatutConfig(statut).label}`}
           </button>
         </div>
-        <p className="text-center text-[11px] text-gray-700 pb-4">1–0 statut · Ctrl+Entrée enregistrer · Échap fermer</p>
+        <p className="text-center text-[11px] text-gray-700 pb-4">1–0 statut · Ctrl+Entrée enregistrer</p>
       </div>
     </div>
   )

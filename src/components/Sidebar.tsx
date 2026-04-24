@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Statut } from '@/lib/prospects'
 import { SIDEBAR_CATEGORIES, getStatutColor } from './StatusBadge'
@@ -10,7 +10,8 @@ import { SIDEBAR_CATEGORIES, getStatutColor } from './StatusBadge'
 type Counts = Record<string, number>
 
 const BOTTOM_NAV = [
-  { href: '/fichiers',  label: 'Fichiers' },
+  { href: '/session',  label: 'Mode session' },
+  { href: '/fichiers', label: 'Fichiers' },
   { href: '/stats',    label: 'Stats' },
   { href: '/settings', label: 'Parametres' },
 ]
@@ -26,18 +27,22 @@ export default function Sidebar() {
     if (pathname === '/prospects') setProspectsOpen(true)
   }, [pathname])
 
-  useEffect(() => {
-    async function fetchCounts() {
-      const { data } = await supabase.from('prospects').select('statut')
-      if (!data) return
-      const c: Counts = { total: data.length }
-      for (const row of data) {
-        c[row.statut] = (c[row.statut] ?? 0) + 1
-      }
-      setCounts(c)
+  const fetchCounts = useCallback(async () => {
+    const { data } = await supabase.from('prospects').select('statut')
+    if (!data) return
+    const c: Counts = { total: data.length }
+    for (const row of data) {
+      c[row.statut] = (c[row.statut] ?? 0) + 1
     }
-    fetchCounts()
+    setCounts(c)
   }, [])
+
+  useEffect(() => { fetchCounts() }, [fetchCounts])
+
+  useEffect(() => {
+    window.addEventListener('prospects-changed', fetchCounts)
+    return () => window.removeEventListener('prospects-changed', fetchCounts)
+  }, [fetchCounts])
 
   const activeStatut = searchParams.get('statut')
   const isProspectsRoute = pathname === '/prospects'

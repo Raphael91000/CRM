@@ -1,13 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { getProspects, updateProspect, addProspect, Prospect, Statut, NewProspect } from '@/lib/prospects'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { getProspects, updateProspect, addProspect, addAppel, Prospect, Statut, NewProspect } from '@/lib/prospects'
 import StatusBadge, { getStatutColor } from '@/components/StatusBadge'
 import CallModal from '@/components/CallModal'
 import AddProspectModal from '@/components/AddProspectModal'
 import { useToast } from '@/components/ToastProvider'
 
-const DAILY_GOAL = 150
+const DEFAULT_DAILY_GOAL = 150
+const GOAL_KEY = 'daily_goal'
 
 function isToday(d: string | null) {
   if (!d) return false
@@ -27,12 +28,28 @@ function fmtTime(d: string) {
 
 // ── Progress bar ──────────────────────────────────────────────────────────────
 
-function DailyProgress({ count }: { count: number }) {
-  const pct = Math.min((count / DAILY_GOAL) * 100, 100)
+function DailyProgress({ count, goal, onGoalChange }: { count: number; goal: number; onGoalChange: (g: number) => void }) {
+  const pct = Math.min((count / goal) * 100, 100)
   const color =
     pct >= 100 ? 'bg-emerald-500' :
     pct >= 60  ? 'bg-blue-500' :
     pct >= 30  ? 'bg-orange-500' : 'bg-red-500'
+
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(String(goal))
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function startEdit() {
+    setDraft(String(goal))
+    setEditing(true)
+    setTimeout(() => inputRef.current?.select(), 0)
+  }
+
+  function commitEdit() {
+    const n = parseInt(draft, 10)
+    if (!isNaN(n) && n > 0) onGoalChange(n)
+    setEditing(false)
+  }
 
   return (
     <div className="bg-[#111827] border border-gray-800 rounded-2xl p-5">
@@ -41,7 +58,26 @@ function DailyProgress({ count }: { count: number }) {
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Objectif journalier</p>
           <div className="flex items-baseline gap-1.5 mt-1">
             <span className="text-3xl font-bold text-white">{count}</span>
-            <span className="text-lg text-gray-500 font-medium">/ {DAILY_GOAL}</span>
+            <span className="text-lg text-gray-500 font-medium">/ </span>
+            {editing ? (
+              <input
+                ref={inputRef}
+                type="number"
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                onBlur={commitEdit}
+                onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditing(false) }}
+                className="w-20 text-lg font-medium bg-gray-800 border border-blue-500/50 rounded-lg px-2 py-0.5 text-white focus:outline-none"
+              />
+            ) : (
+              <button
+                onClick={startEdit}
+                title="Modifier l'objectif"
+                className="text-lg text-gray-500 font-medium hover:text-gray-300 transition-colors border-b border-dashed border-gray-700 hover:border-gray-500"
+              >
+                {goal}
+              </button>
+            )}
           </div>
         </div>
         <span className={`text-sm font-semibold ${pct >= 100 ? 'text-emerald-400' : 'text-gray-400'}`}>
@@ -78,10 +114,12 @@ function ProspectCard({
   prospect,
   onCall,
   onPoubelle,
+  focused,
 }: {
   prospect: Prospect
   onCall: (p: Prospect) => void
   onPoubelle?: (p: Prospect) => void
+  focused?: boolean
 }) {
   const nb = prospect.nb_tentatives ?? 0
   const color = getStatutColor(prospect.statut)
@@ -95,7 +133,9 @@ function ProspectCard({
 
   return (
     <div
-      className="flex items-center gap-4 rounded-xl bg-[#111827] border border-gray-800 hover:border-gray-500 cursor-pointer transition-all"
+      className={`flex items-center gap-4 rounded-xl bg-[#111827] border cursor-pointer transition-all ${
+        focused ? 'border-blue-500 ring-1 ring-blue-500/50' : 'border-gray-800 hover:border-gray-500'
+      }`}
       style={{ borderLeft: `3px solid ${color}` }}
       onClick={() => onCall(prospect)}
     >
@@ -168,7 +208,7 @@ function ProspectCard({
 // ── Section ───────────────────────────────────────────────────────────────────
 
 function Section({
-  title, count, prospects, onCall, onPoubelle, emptyText, urgent,
+  title, count, prospects, onCall, onPoubelle, emptyText, urgent, focusedId,
 }: {
   title: string
   count: number
@@ -177,6 +217,7 @@ function Section({
   onPoubelle?: (p: Prospect) => void
   emptyText: string
   urgent?: boolean
+  focusedId?: string | null
 }) {
   return (
     <section>
@@ -202,6 +243,7 @@ function Section({
               prospect={p}
               onCall={onCall}
               onPoubelle={onPoubelle}
+              focused={focusedId === p.id}
             />
           ))}
         </div>
@@ -217,7 +259,22 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Prospect | null>(null)
   const [showAdd, setShowAdd] = useState(false)
+  const [dailyGoal, setDailyGoal] = useState<number>(DEFAULT_DAILY_GOAL)
+  const [focusedId, setFocusedId] = useState<string | null>(null)
   const { toast } = useToast()
+
+  useEffect(() => {
+    const saved = localStorage.getItem(GOAL_KEY)
+    if (saved) {
+      const n = parseInt(saved, 10)
+      if (!isNaN(n) && n > 0) setDailyGoal(n)
+    }
+  }, [])
+
+  function handleGoalChange(g: number) {
+    setDailyGoal(g)
+    localStorage.setItem(GOAL_KEY, String(g))
+  }
 
   const load = useCallback(async () => {
     try {
@@ -233,14 +290,17 @@ export default function DashboardPage() {
 
   async function handleSaveCall(id: string, statut: Statut, note: string, prochaine: string) {
     const current = prospects.find(p => p.id === id)
-    await updateProspect(id, {
-      statut,
-      note: note || null,
-      derniere_relance: new Date().toISOString(),
-      prochaine_relance: prochaine ? new Date(prochaine).toISOString() : null,
-      nb_tentatives: (current?.nb_tentatives ?? 0) + 1,
-    })
-    toast('Appel enregistre')
+    await Promise.all([
+      updateProspect(id, {
+        statut,
+        note: note || null,
+        derniere_relance: new Date().toISOString(),
+        prochaine_relance: prochaine ? new Date(prochaine).toISOString() : null,
+        nb_tentatives: (current?.nb_tentatives ?? 0) + 1,
+      }),
+      addAppel({ prospectId: id, statut, note }),
+    ])
+    toast('Appel enregistré')
     await load()
   }
 
@@ -259,7 +319,8 @@ export default function DashboardPage() {
   // Daily stats
   const todayCalls = prospects.filter(p => isToday(p.derniere_relance))
   const appelsAujourdhui = todayCalls.length
-  const decroches = todayCalls.filter(p => p.statut !== 'nrp').length
+  const nrpDuJour = todayCalls.filter(p => p.statut === 'nrp').length
+  const decroches = appelsAujourdhui - nrpDuJour
   const interesses = todayCalls.filter(p => ['a_rappeler', 'rdv', 'demo_envoyee'].includes(p.statut)).length
   const tauxDecrochage = appelsAujourdhui > 0 ? Math.round((decroches / appelsAujourdhui) * 100) : 0
 
@@ -274,6 +335,33 @@ export default function DashboardPage() {
   const aRappeler     = prospects.filter(p => p.statut === 'a_rappeler' && isDueToday(p.prochaine_relance))
   const noShow        = prospects.filter(p => p.statut === 'no_show')
   const nouveaux      = prospects.filter(p => p.statut === 'nouveau')
+
+  // Flat list for keyboard navigation (same order as sections)
+  const allVisible = [...rdvAujourdhui, ...noShow, ...aRappeler, ...nouveaux]
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (selected) return
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Enter') return
+      if (allVisible.length === 0) return
+      e.preventDefault()
+      if (e.key === 'Enter') {
+        const p = allVisible.find(p => p.id === focusedId)
+        if (p) setSelected(p)
+        return
+      }
+      const idx = allVisible.findIndex(p => p.id === focusedId)
+      if (e.key === 'ArrowDown') {
+        const next = idx < allVisible.length - 1 ? allVisible[idx + 1] : allVisible[0]
+        setFocusedId(next.id)
+      } else {
+        const prev = idx > 0 ? allVisible[idx - 1] : allVisible[allVisible.length - 1]
+        setFocusedId(prev.id)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selected, focusedId, allVisible])
 
   if (loading) {
     return (
@@ -300,12 +388,12 @@ export default function DashboardPage() {
       </div>
 
       {/* Objectif journalier */}
-      <DailyProgress count={appelsAujourdhui} />
+      <DailyProgress count={appelsAujourdhui} goal={dailyGoal} onGoalChange={handleGoalChange} />
 
       {/* Stats journalieres */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         <DailyStat label="Appels ce jour"    value={appelsAujourdhui}       accent="text-white" />
-        <DailyStat label="Decroches"         value={decroches}              accent="text-blue-400" />
+        <DailyStat label="NRP du jour"       value={nrpDuJour}              accent="text-orange-400" />
         <DailyStat label="Taux decrochage"   value={`${tauxDecrochage}%`}   accent={tauxDecrochage >= 50 ? 'text-emerald-400' : tauxDecrochage >= 30 ? 'text-orange-400' : 'text-red-400'} />
         <DailyStat label="Interesses"        value={interesses}             accent="text-teal-400" />
         <DailyStat label="Premier appel"     value={premierAppel}           accent="text-gray-300" />
@@ -321,6 +409,7 @@ export default function DashboardPage() {
         onPoubelle={handlePoubelle}
         emptyText="Aucun RDV prevu aujourd'hui."
         urgent
+        focusedId={focusedId}
       />
 
       {/* No show */}
@@ -331,6 +420,7 @@ export default function DashboardPage() {
         onCall={setSelected}
         onPoubelle={handlePoubelle}
         emptyText="Aucun no show."
+        focusedId={focusedId}
       />
 
       {/* A rappeler aujourd'hui */}
@@ -341,6 +431,7 @@ export default function DashboardPage() {
         onCall={setSelected}
         onPoubelle={handlePoubelle}
         emptyText="Aucun rappel prevu aujourd'hui."
+        focusedId={focusedId}
       />
 
       {/* Nouveaux */}
@@ -351,6 +442,7 @@ export default function DashboardPage() {
         onCall={setSelected}
         onPoubelle={handlePoubelle}
         emptyText="Aucun nouveau prospect."
+        focusedId={focusedId}
       />
 
       {/* Modals */}

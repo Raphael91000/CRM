@@ -40,6 +40,14 @@ export type NewProspect = {
   prochaine_relance?: string | null
 }
 
+export type Appel = {
+  id: string
+  prospect_id: string
+  date: string
+  statut: string
+  note: string | null
+}
+
 export type Import = {
   id: string
   nom_fichier: string
@@ -61,23 +69,81 @@ export async function getProspectsPage(params: {
   limit: number
   statut?: string
   search?: string
+  departement?: string
+  orderBy?: string
+  orderDir?: 'asc' | 'desc'
 }): Promise<{ data: Prospect[]; count: number }> {
-  const { page, limit, statut, search } = params
+  const { page, limit, statut, search, departement, orderBy = 'date_creation', orderDir = 'desc' } = params
   const from = (page - 1) * limit
   const to = from + limit - 1
 
   let query = supabase
     .from('prospects')
     .select('*', { count: 'exact' })
-    .order('date_creation', { ascending: false })
+    .order(orderBy, { ascending: orderDir === 'asc' })
     .range(from, to)
 
   if (statut) query = query.eq('statut', statut)
-  if (search) query = query.ilike('nom', `%${search}%`)
+  if (departement) query = query.eq('departement', departement)
+  if (search) query = query.or(`nom.ilike.%${search}%,telephone.ilike.%${search}%`)
 
   const { data, error, count } = await query
   if (error) throw error
   return { data: data as Prospect[], count: count ?? 0 }
+}
+
+export async function exportProspects(params: {
+  statut?: string
+  search?: string
+  departement?: string
+}): Promise<Prospect[]> {
+  let query = supabase
+    .from('prospects')
+    .select('*')
+    .order('date_creation', { ascending: false })
+
+  if (params.statut) query = query.eq('statut', params.statut)
+  if (params.departement) query = query.eq('departement', params.departement)
+  if (params.search) query = query.or(`nom.ilike.%${params.search}%,telephone.ilike.%${params.search}%`)
+
+  const { data, error } = await query
+  if (error) throw error
+  return data as Prospect[]
+}
+
+export async function getDepartements(): Promise<string[]> {
+  const { data, error } = await supabase.from('prospects').select('departement')
+  if (error) return []
+  const unique = [...new Set((data ?? []).map(r => r.departement).filter(Boolean))] as string[]
+  return unique.sort()
+}
+
+export async function getExistingPhones(): Promise<Set<string>> {
+  const { data } = await supabase.from('prospects').select('telephone')
+  const phones = new Set((data ?? []).map(r => r.telephone.replace(/\s/g, '')))
+  return phones
+}
+
+export async function getAppels(prospectId: string): Promise<Appel[]> {
+  const { data, error } = await supabase
+    .from('appels')
+    .select('*')
+    .eq('prospect_id', prospectId)
+    .order('date', { ascending: false })
+  if (error) throw error
+  return data as Appel[]
+}
+
+export async function addAppel(params: {
+  prospectId: string
+  statut: Statut
+  note: string
+}): Promise<void> {
+  await supabase.from('appels').insert({
+    prospect_id: params.prospectId,
+    statut: params.statut,
+    note: params.note || null,
+  })
 }
 
 export async function updateProspect(
@@ -92,6 +158,16 @@ export async function updateProspect(
     .single()
   if (error) throw error
   return data as Prospect
+}
+
+export async function bulkDeleteProspects(ids: string[]): Promise<void> {
+  const { error } = await supabase.from('prospects').delete().in('id', ids)
+  if (error) throw error
+}
+
+export async function bulkUpdateStatut(ids: string[], statut: Statut): Promise<void> {
+  const { error } = await supabase.from('prospects').update({ statut }).in('id', ids)
+  if (error) throw error
 }
 
 export async function addProspect(prospect: NewProspect): Promise<Prospect> {
@@ -118,7 +194,6 @@ export async function bulkAddProspects(
   rows: NewProspect[],
   fileName: string
 ): Promise<number> {
-  // Create the import record first
   const { data: imp, error: impErr } = await supabase
     .from('imports')
     .insert({ nom_fichier: fileName, nb_prospects: rows.length })
