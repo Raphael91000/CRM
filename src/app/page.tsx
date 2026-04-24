@@ -288,6 +288,11 @@ export default function DashboardPage() {
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    window.addEventListener('prospects-changed', load)
+    return () => window.removeEventListener('prospects-changed', load)
+  }, [load])
+
   async function handleSaveCall(id: string, statut: Statut, note: string, prochaine: string) {
     const current = prospects.find(p => p.id === id)
     await Promise.all([
@@ -302,12 +307,14 @@ export default function DashboardPage() {
     ])
     toast('Appel enregistré')
     await load()
+    window.dispatchEvent(new CustomEvent('prospects-changed'))
   }
 
   async function handlePoubelle(prospect: Prospect) {
     await updateProspect(prospect.id, { statut: 'poubelle' })
     toast(`${prospect.nom} → Poubelle`, 'info')
     await load()
+    window.dispatchEvent(new CustomEvent('prospects-changed'))
   }
 
   async function handleAdd(data: NewProspect) {

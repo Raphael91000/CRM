@@ -100,6 +100,7 @@ export default function SessionPage() {
         addAppel({ prospectId: current.id, statut, note }),
       ])
       toast('Appel enregistré')
+      window.dispatchEvent(new CustomEvent('prospects-changed'))
       setDone(d => d + 1)
       if (index + 1 >= queue.length) {
         setIndex(queue.length)
