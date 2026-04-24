@@ -23,6 +23,11 @@ function skipWeekend(d: Date): Date {
   return d
 }
 
+function toLocalInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 function suggestNrpDate(nbTentatives: number): string {
   const now = new Date()
   const daysToAdd = nbTentatives === 0 ? 1 : nbTentatives === 1 ? 3 : 7
@@ -32,7 +37,15 @@ function suggestNrpDate(nbTentatives: number): string {
   next.setDate(next.getDate() + daysToAdd)
   next.setHours(nextHour, nextMinute, 0, 0)
   skipWeekend(next)
-  return next.toISOString().slice(0, 16)
+  return toLocalInput(next)
+}
+
+function localInputToISO(s: string): string | null {
+  if (!s) return null
+  const [datePart, timePart = '00:00'] = s.split('T')
+  const [y, m, d] = datePart.split('-').map(Number)
+  const [h, min] = timePart.split(':').map(Number)
+  return new Date(y, m - 1, d, h || 0, min || 0).toISOString()
 }
 
 function isDueToday(d: string | null) {
@@ -96,7 +109,7 @@ export default function SessionPage() {
     if (statut === 'nrp') {
       setProchaine(suggestNrpDate(current.nb_tentatives ?? 0))
     } else if (statut === 'a_rappeler' || statut === 'rdv' || statut === 'no_show' || statut === 'en_attente') {
-      setProchaine(current.prochaine_relance?.slice(0, 16) ?? '')
+      setProchaine(current.prochaine_relance ? toLocalInput(new Date(current.prochaine_relance)) : '')
     } else {
       setProchaine('')
     }
@@ -105,6 +118,7 @@ export default function SessionPage() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA' && (e.target as HTMLElement).tagName !== 'INPUT') handleSave()
+      if (e.key === 'Enter' && e.ctrlKey && (e.target as HTMLElement).tagName === 'TEXTAREA') handleSave()
       if (e.key === 'g' && (e.ctrlKey || e.metaKey) && current?.fiche_google) {
         e.preventDefault()
         window.open(current.fiche_google, '_blank')
@@ -130,7 +144,7 @@ export default function SessionPage() {
           statut,
           note: note || null,
           derniere_relance: new Date().toISOString(),
-          prochaine_relance: prochaine ? new Date(prochaine).toISOString() : null,
+          prochaine_relance: localInputToISO(prochaine),
           nb_tentatives: statut === 'nrp' ? (current.nb_tentatives ?? 0) + 1 : 0,
         }),
         addAppel({ prospectId: current.id, statut, note }),
@@ -386,6 +400,13 @@ export default function SessionPage() {
           {/* Prochaine relance */}
           {(statut === 'nrp' || statut === 'a_rappeler' || statut === 'rdv' || statut === 'no_show' || statut === 'en_attente') && (
             <div className="space-y-1.5">
+              {prochaine && (() => {
+                const d = new Date(prochaine)
+                const days = Math.round((new Date(d).setHours(0,0,0,0) - new Date().setHours(0,0,0,0)) / 86400000)
+                const label = days === 0 ? "Aujourd'hui" : days === 1 ? 'Demain' : days < 0 ? `Il y a ${Math.abs(days)}j` : `Dans ${days} jour${days > 1 ? 's' : ''}`
+                const color = days <= 0 ? 'text-orange-400' : days <= 2 ? 'text-yellow-400' : 'text-gray-500'
+                return <p className={`text-xs font-medium px-1 ${color}`}>{label}</p>
+              })()}
               <input
                 type="datetime-local"
                 value={prochaine}
@@ -418,7 +439,7 @@ export default function SessionPage() {
             {saving ? 'Enregistrement...' : `Enregistrer — ${getStatutConfig(statut).label}`}
           </button>
         </div>
-        <p className="text-center text-[11px] text-gray-700 pb-4">1–0 statut · ⌘G fiche · Entrée enregistrer</p>
+        <p className="text-center text-[11px] text-gray-700 pb-4">1–0 statut · ⌘G fiche · Entrée enregistrer · Ctrl+Entrée depuis la note</p>
       </div>
     </div>
   )

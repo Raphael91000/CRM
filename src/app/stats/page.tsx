@@ -39,17 +39,16 @@ function filterByPeriod(prospects: Prospect[], period: Period): Prospect[] {
   return prospects.filter(p => p.derniere_relance && new Date(p.derniere_relance) >= start)
 }
 
-function buildBarData(prospects: Prospect[], period: Period): { label: string; value: number }[] {
+type BarItem = { label: string; value: number; prospects: Prospect[] }
+
+function buildBarData(prospects: Prospect[], period: Period): BarItem[] {
   const now = new Date()
 
   if (period === 'day') {
-    return Array.from({ length: 24 }, (_, h) => ({
-      label: `${h}h`,
-      value: prospects.filter(p => {
-        if (!p.derniere_relance) return false
-        return new Date(p.derniere_relance).getHours() === h
-      }).length,
-    }))
+    return Array.from({ length: 24 }, (_, h) => {
+      const ps = prospects.filter(p => p.derniere_relance && new Date(p.derniere_relance).getHours() === h)
+      return { label: `${h}h`, value: ps.length, prospects: ps }
+    })
   }
 
   if (period === 'week') {
@@ -58,10 +57,8 @@ function buildBarData(prospects: Prospect[], period: Period): { label: string; v
       const d = new Date(periodStart('week'))
       d.setDate(d.getDate() + i)
       const iso = d.toISOString().slice(0, 10)
-      return {
-        label: DAY_NAMES[i],
-        value: prospects.filter(p => p.derniere_relance?.startsWith(iso)).length,
-      }
+      const ps = prospects.filter(p => p.derniere_relance?.startsWith(iso))
+      return { label: DAY_NAMES[i], value: ps.length, prospects: ps }
     })
   }
 
@@ -70,48 +67,58 @@ function buildBarData(prospects: Prospect[], period: Period): { label: string; v
     return Array.from({ length: daysInMonth }, (_, i) => {
       const day = String(i + 1).padStart(2, '0')
       const prefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${day}`
-      return {
-        label: String(i + 1),
-        value: prospects.filter(p => p.derniere_relance?.startsWith(prefix)).length,
-      }
+      const ps = prospects.filter(p => p.derniere_relance?.startsWith(prefix))
+      return { label: String(i + 1), value: ps.length, prospects: ps }
     })
   }
 
-  // Year: by month
   const MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aou', 'Sep', 'Oct', 'Nov', 'Dec']
   return Array.from({ length: 12 }, (_, m) => {
     const prefix = `${now.getFullYear()}-${String(m + 1).padStart(2, '0')}`
-    return {
-      label: MONTH_NAMES[m],
-      value: prospects.filter(p => p.derniere_relance?.startsWith(prefix)).length,
-    }
+    const ps = prospects.filter(p => p.derniere_relance?.startsWith(prefix))
+    return { label: MONTH_NAMES[m], value: ps.length, prospects: ps }
   })
 }
 
 // ── Charts ────────────────────────────────────────────────────────────────────
 
-function BarChart({ data }: { data: { label: string; value: number }[] }) {
+function BarChart({ data, onSelect, selectedLabel }: {
+  data: BarItem[]
+  onSelect: (item: BarItem) => void
+  selectedLabel: string | null
+}) {
   const max = Math.max(...data.map(d => d.value), 1)
   const showEvery = data.length > 15 ? Math.ceil(data.length / 12) : 1
 
   return (
     <div className="flex items-end justify-between gap-1 h-36">
-      {data.map((d, i) => (
-        <div key={d.label} className="flex flex-col items-center gap-1 flex-1 h-full min-w-0">
-          {d.value > 0 && (
-            <span className="text-[10px] text-gray-500">{d.value}</span>
-          )}
-          <div className="w-full flex flex-col justify-end flex-1">
-            <div
-              className="w-full bg-blue-600/80 hover:bg-blue-500 rounded-t transition-colors"
-              style={{ height: `${(d.value / max) * 100}%`, minHeight: d.value > 0 ? '3px' : '0' }}
-            />
+      {data.map((d, i) => {
+        const isSelected = selectedLabel === d.label
+        return (
+          <div
+            key={d.label}
+            onClick={() => d.value > 0 && onSelect(d)}
+            className={`flex flex-col items-center gap-1 flex-1 h-full min-w-0 ${d.value > 0 ? 'cursor-pointer' : ''}`}
+          >
+            {d.value > 0 && (
+              <span className={`text-[10px] ${isSelected ? 'text-blue-400 font-bold' : 'text-gray-500'}`}>{d.value}</span>
+            )}
+            <div className="w-full flex flex-col justify-end flex-1">
+              <div
+                className={`w-full rounded-t transition-colors ${
+                  isSelected ? 'bg-blue-400' : d.value > 0 ? 'bg-blue-600/80 hover:bg-blue-500' : 'bg-transparent'
+                }`}
+                style={{ height: `${(d.value / max) * 100}%`, minHeight: d.value > 0 ? '3px' : '0' }}
+              />
+            </div>
+            {i % showEvery === 0 && (
+              <span className={`text-[10px] truncate w-full text-center ${isSelected ? 'text-blue-400 font-semibold' : 'text-gray-600'}`}>
+                {d.label}
+              </span>
+            )}
           </div>
-          {i % showEvery === 0 && (
-            <span className="text-[10px] text-gray-600 truncate w-full text-center">{d.label}</span>
-          )}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -182,6 +189,8 @@ export default function StatsPage() {
   const [period, setPeriod] = useState<Period>('week')
   const { toast } = useToast()
 
+  const [selectedBar, setSelectedBar] = useState<BarItem | null>(null)
+
   const load = useCallback(async () => {
     try {
       setAll(await getProspects())
@@ -193,6 +202,7 @@ export default function StatsPage() {
   }, [toast])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { setSelectedBar(null) }, [period])
 
   const periodProspects = useMemo(() => filterByPeriod(all, period), [all, period])
   const barData = useMemo(() => buildBarData(periodProspects, period), [periodProspects, period])
@@ -285,7 +295,37 @@ export default function StatsPage() {
             {period === 'month' && 'Ce mois par jour'}
             {period === 'year' && "Cette annee par mois"}
           </p>
-          <BarChart data={barData} />
+          <BarChart data={barData} onSelect={b => setSelectedBar(prev => prev?.label === b.label ? null : b)} selectedLabel={selectedBar?.label ?? null} />
+
+          {/* Détail barre sélectionnée */}
+          {selectedBar && (
+            <div className="mt-5 border-t border-gray-800 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold text-white">
+                  {selectedBar.label} — <span className="text-blue-400">{selectedBar.value} appel{selectedBar.value > 1 ? 's' : ''}</span>
+                </p>
+                <button onClick={() => setSelectedBar(null)} className="text-xs text-gray-600 hover:text-gray-400 transition-colors">✕ Fermer</button>
+              </div>
+              <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                {selectedBar.prospects.map(p => {
+                  const color = DONUT_COLORS[p.statut] ?? '#374151'
+                  const cfg = getStatutConfig(p.statut)
+                  return (
+                    <div key={p.id} className="flex items-center gap-3 bg-gray-800/40 rounded-lg px-3 py-2">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                      <span className="text-sm text-gray-200 flex-1 truncate">{p.nom}</span>
+                      <span className="text-xs font-medium shrink-0" style={{ color }}>{cfg.label}</span>
+                      {p.derniere_relance && (
+                        <span className="text-[10px] text-gray-600 shrink-0">
+                          {new Date(p.derniere_relance).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Donut */}

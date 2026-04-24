@@ -8,6 +8,14 @@ import { useToast } from './ToastProvider'
 
 const WINDOW_MINUTES = 15
 
+function localInputToISO(s: string): string | null {
+  if (!s) return null
+  const [datePart, timePart = '00:00'] = s.split('T')
+  const [y, m, d] = datePart.split('-').map(Number)
+  const [h, min] = timePart.split(':').map(Number)
+  return new Date(y, m - 1, d, h || 0, min || 0).toISOString()
+}
+
 function minutesUntil(d: string): number {
   return (new Date(d).getTime() - Date.now()) / 60000
 }
@@ -49,7 +57,7 @@ export default function RappelAlert() {
         statut,
         note: note || null,
         derniere_relance: new Date().toISOString(),
-        prochaine_relance: prochaine ? new Date(prochaine).toISOString() : null,
+        prochaine_relance: localInputToISO(prochaine),
         nb_tentatives: (current?.nb_tentatives ?? 0) + 1,
       }),
       addAppel({ prospectId: id, statut, note }),

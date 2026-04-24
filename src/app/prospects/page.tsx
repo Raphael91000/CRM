@@ -22,6 +22,14 @@ function formatDate(d: string | null) {
   return new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })
 }
 
+function localInputToISO(s: string): string | null {
+  if (!s) return null
+  const [datePart, timePart = '00:00'] = s.split('T')
+  const [y, m, d] = datePart.split('-').map(Number)
+  const [h, min] = timePart.split(':').map(Number)
+  return new Date(y, m - 1, d, h || 0, min || 0).toISOString()
+}
+
 function downloadCsv(prospects: Prospect[]) {
   const headers = ['Nom', 'Telephone', 'Departement', 'Statut', 'Appels', 'Derniere relance', 'Prochaine relance', 'Note', 'Fiche Google']
   const rows = prospects.map(p => [
@@ -133,9 +141,9 @@ function ProspectsInner() {
 
   useEffect(() => { setPage(1); setSelected(new Set()) }, [filterStatut, debouncedSearch, filterDept, sort])
 
-  // Auto-sort by prochaine_relance asc when viewing NRP
+  // Auto-sort by prochaine_relance asc when viewing NRP, RDV, or À rappeler
   useEffect(() => {
-    if (filterStatut === 'nrp') {
+    if (filterStatut === 'nrp' || filterStatut === 'rdv' || filterStatut === 'a_rappeler') {
       setSort({ col: 'prochaine_relance', dir: 'asc' })
     } else {
       setSort({ col: 'date_creation', dir: 'desc' })
@@ -218,19 +226,24 @@ function ProspectsInner() {
   // Handlers
   async function handleSaveCall(id: string, statut: Statut, note: string, prochaine: string) {
     const current = prospects.find(p => p.id === id)
-    await Promise.all([
-      updateProspect(id, {
-        statut,
-        note: note || null,
-        derniere_relance: new Date().toISOString(),
-        prochaine_relance: prochaine ? new Date(prochaine).toISOString() : null,
-        nb_tentatives: statut === 'nrp' ? (current?.nb_tentatives ?? 0) + 1 : 0,
-      }),
-      addAppel({ prospectId: id, statut, note }),
-    ])
-    toast('Appel enregistré')
-    notifyChanged()
-    await load()
+    try {
+      await Promise.all([
+        updateProspect(id, {
+          statut,
+          note: note || null,
+          derniere_relance: new Date().toISOString(),
+          prochaine_relance: localInputToISO(prochaine),
+          nb_tentatives: statut === 'nrp' ? (current?.nb_tentatives ?? 0) + 1 : 0,
+        }),
+        addAppel({ prospectId: id, statut, note }),
+      ])
+      toast('Appel enregistré')
+      notifyChanged()
+      await load()
+    } catch (err) {
+      toast(`Erreur : ${String(err)}`, 'error')
+      throw err
+    }
   }
 
   async function handleAdd(data: NewProspect) {
@@ -410,7 +423,7 @@ function ProspectsInner() {
               <SortHeader label="Dépt" col="departement" sort={sort} onSort={toggleSort} />
               <SortHeader label="Statut" col="statut" sort={sort} onSort={toggleSort} />
               <span className="text-xs font-medium text-gray-500 uppercase tracking-wider text-center">Appels</span>
-              {filterStatut === 'nrp'
+              {filterStatut === 'nrp' || filterStatut === 'rdv' || filterStatut === 'a_rappeler'
                 ? <SortHeader label="Prochain appel" col="prochaine_relance" sort={sort} onSort={toggleSort} />
                 : <SortHeader label="Dernière" col="derniere_relance" sort={sort} onSort={toggleSort} />
               }
@@ -459,17 +472,24 @@ function ProspectsInner() {
                     <span className="text-xs text-gray-500 truncate">{p.departement || '—'}</span>
                     <StatusBadge statut={p.statut} />
                     <span className="text-sm text-gray-500 text-center">{p.nb_tentatives}</span>
-                    {filterStatut === 'nrp' ? (() => {
+                    {(() => {
+                      const showProchaine = p.statut === 'nrp' || p.statut === 'rdv' || p.statut === 'a_rappeler'
+                      if (!showProchaine) return <span className="text-xs text-gray-600">{formatDate(p.derniere_relance)}</span>
                       if (!p.prochaine_relance) return <span className="text-xs text-gray-700">—</span>
                       const d = new Date(p.prochaine_relance)
                       const isToday = d.toDateString() === new Date().toDateString()
                       const isPast = d < new Date()
+                      const color = p.statut === 'rdv'
+                        ? (isPast ? 'text-orange-400' : isToday ? 'text-green-400' : 'text-green-500')
+                        : p.statut === 'a_rappeler'
+                          ? (isPast || isToday ? 'text-orange-400' : 'text-cyan-400')
+                          : (isPast || isToday ? 'text-orange-400' : 'text-gray-400')
                       return (
-                        <span className={`text-xs font-medium ${isPast || isToday ? 'text-orange-400' : 'text-gray-400'}`}>
-                          {isToday ? 'Aujourd\'hui ' : ''}{d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} {d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                        <span className={`text-xs font-medium ${color}`}>
+                          {isToday ? "Aujourd'hui " : ''}{d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} {d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       )
-                    })() : <span className="text-xs text-gray-600">{formatDate(p.derniere_relance)}</span>}
+                    })()}
                     <div className="flex items-center justify-end gap-1.5">
                       <button onClick={() => setModalProspect(p)}
                         className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 hover:text-white text-xs font-semibold rounded-lg transition-all shrink-0">

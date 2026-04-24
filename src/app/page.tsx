@@ -26,6 +26,14 @@ function fmtTime(d: string) {
   return new Date(d).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 }
 
+function localInputToISO(s: string): string | null {
+  if (!s) return null
+  const [datePart, timePart = '00:00'] = s.split('T')
+  const [y, m, d] = datePart.split('-').map(Number)
+  const [h, min] = timePart.split(':').map(Number)
+  return new Date(y, m - 1, d, h || 0, min || 0).toISOString()
+}
+
 // ── Progress bar ──────────────────────────────────────────────────────────────
 
 function DailyProgress({ count, goal, onGoalChange }: { count: number; goal: number; onGoalChange: (g: number) => void }) {
@@ -99,11 +107,62 @@ function DailyProgress({ count, goal, onGoalChange }: { count: number; goal: num
 
 // ── Daily stat card ───────────────────────────────────────────────────────────
 
-function DailyStat({ label, value, accent }: { label: string; value: string | number; accent: string }) {
+function DailyStat({
+  label, value, accent, prospects, onSelect,
+}: {
+  label: string
+  value: string | number
+  accent: string
+  prospects?: Prospect[]
+  onSelect?: (p: Prospect) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const clickable = prospects && prospects.length > 0 && onSelect
+
+  useEffect(() => {
+    if (!open) return
+    function onClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [open])
+
   return (
-    <div className="bg-[#111827] border border-gray-800 rounded-xl p-4">
-      <p className={`text-2xl font-bold ${accent}`}>{value}</p>
-      <p className="text-xs text-gray-500 mt-1">{label}</p>
+    <div ref={ref} className="relative">
+      <div
+        onClick={() => clickable && setOpen(o => !o)}
+        className={`bg-[#111827] border rounded-xl p-4 transition-colors ${
+          clickable ? 'border-gray-800 hover:border-gray-600 cursor-pointer' : 'border-gray-800'
+        } ${open ? 'border-gray-600' : ''}`}
+      >
+        <p className={`text-2xl font-bold ${accent}`}>{value}</p>
+        <p className="text-xs text-gray-500 mt-1">{label}</p>
+        {clickable && (
+          <svg className={`absolute top-3 right-3 w-3 h-3 text-gray-700 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        )}
+      </div>
+
+      {open && prospects && onSelect && (
+        <div className="absolute top-full left-0 mt-1.5 z-30 bg-[#111827] border border-gray-700 rounded-xl shadow-2xl w-56 py-1.5 overflow-hidden">
+          <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wider px-3 py-1.5">{prospects.length} prospect{prospects.length > 1 ? 's' : ''}</p>
+          <div className="max-h-52 overflow-y-auto">
+            {prospects.map(p => (
+              <button
+                key={p.id}
+                onClick={() => { onSelect(p); setOpen(false) }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-gray-800/60 text-left transition-colors"
+              >
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: getStatutColor(p.statut) }} />
+                <span className="text-sm text-gray-200 truncate">{p.nom}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -177,7 +236,21 @@ function ProspectCard({
           )}
         </div>
 
-        {prospect.derniere_relance && (
+        {prospect.prochaine_relance && (prospect.statut === 'rdv' || prospect.statut === 'a_rappeler') && (() => {
+          const d = new Date(prospect.prochaine_relance)
+          const days = Math.round((new Date(d).setHours(0,0,0,0) - new Date().setHours(0,0,0,0)) / 86400000)
+          const time = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+          const dateLabel = days === 0 ? "Aujourd'hui" : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+          const isRdv = prospect.statut === 'rdv'
+          const color = days < 0 ? 'text-orange-400' : isRdv ? 'text-green-400' : 'text-cyan-400'
+          const prefix = isRdv ? 'RDV' : 'Rappel'
+          return (
+            <p className={`text-xs font-semibold mt-1 ${color}`}>
+              {prefix} {dateLabel} à {time}
+            </p>
+          )
+        })()}
+        {prospect.derniere_relance && prospect.statut !== 'rdv' && prospect.statut !== 'a_rappeler' && (
           <p className="text-xs text-gray-600 mt-1">
             {nb === 1 ? '1er appel' : `${nb}e appel`} · {fmtDateTime(prospect.derniere_relance)}
           </p>
@@ -295,19 +368,24 @@ export default function DashboardPage() {
 
   async function handleSaveCall(id: string, statut: Statut, note: string, prochaine: string) {
     const current = prospects.find(p => p.id === id)
-    await Promise.all([
-      updateProspect(id, {
-        statut,
-        note: note || null,
-        derniere_relance: new Date().toISOString(),
-        prochaine_relance: prochaine ? new Date(prochaine).toISOString() : null,
-        nb_tentatives: statut === 'nrp' ? (current?.nb_tentatives ?? 0) + 1 : 0,
-      }),
-      addAppel({ prospectId: id, statut, note }),
-    ])
-    toast('Appel enregistré')
-    await load()
-    window.dispatchEvent(new CustomEvent('prospects-changed'))
+    try {
+      await Promise.all([
+        updateProspect(id, {
+          statut,
+          note: note || null,
+          derniere_relance: new Date().toISOString(),
+          prochaine_relance: localInputToISO(prochaine),
+          nb_tentatives: statut === 'nrp' ? (current?.nb_tentatives ?? 0) + 1 : 0,
+        }),
+        addAppel({ prospectId: id, statut, note }),
+      ])
+      toast('Appel enregistré')
+      await load()
+      window.dispatchEvent(new CustomEvent('prospects-changed'))
+    } catch (err) {
+      toast(`Erreur : ${String(err)}`, 'error')
+      throw err
+    }
   }
 
   async function handlePoubelle(prospect: Prospect) {
@@ -404,12 +482,15 @@ export default function DashboardPage() {
 
       {/* Stats journalieres */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-        <DailyStat label="Appels ce jour"    value={appelsAujourdhui}       accent="text-white" />
-        <DailyStat label="NRP du jour"       value={nrpDuJour}              accent="text-orange-400" />
-        <DailyStat label="Taux decrochage"   value={`${tauxDecrochage}%`}   accent={tauxDecrochage >= 50 ? 'text-emerald-400' : tauxDecrochage >= 30 ? 'text-orange-400' : 'text-red-400'} />
-        <DailyStat label="Interesses"        value={interesses}             accent="text-teal-400" />
-        <DailyStat label="Premier appel"     value={premierAppel}           accent="text-gray-300" />
-        <DailyStat label="Dernier appel"     value={dernierAppel}           accent="text-gray-300" />
+        <DailyStat label="Appels ce jour"  value={appelsAujourdhui} accent="text-white"
+          prospects={todayCalls} onSelect={setSelected} />
+        <DailyStat label="NRP du jour"     value={nrpDuJour}        accent="text-orange-400"
+          prospects={todayCalls.filter(p => p.statut === 'nrp')} onSelect={setSelected} />
+        <DailyStat label="Taux decrochage" value={`${tauxDecrochage}%`} accent={tauxDecrochage >= 50 ? 'text-emerald-400' : tauxDecrochage >= 30 ? 'text-orange-400' : 'text-red-400'} />
+        <DailyStat label="Interesses"      value={interesses}       accent="text-teal-400"
+          prospects={todayCalls.filter(p => ['a_rappeler', 'rdv', 'demo_envoyee'].includes(p.statut))} onSelect={setSelected} />
+        <DailyStat label="Premier appel"   value={premierAppel}     accent="text-gray-300" />
+        <DailyStat label="Dernier appel"   value={dernierAppel}     accent="text-gray-300" />
       </div>
 
       {/* RDV aujourd'hui */}

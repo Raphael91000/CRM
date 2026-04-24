@@ -22,6 +22,11 @@ function fmtDate(d: string) {
   })
 }
 
+function toLocalInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 function skipWeekend(d: Date): Date {
   while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1)
   return d
@@ -36,17 +41,21 @@ function suggestNrpDate(nbTentatives: number): string {
   next.setDate(next.getDate() + daysToAdd)
   next.setHours(nextHour, nextMinute, 0, 0)
   skipWeekend(next)
-  return next.toISOString().slice(0, 16)
+  return toLocalInput(next)
 }
 
 export default function CallModal({ prospect, onClose, onSave }: Props) {
-  const [statut, setStatut] = useState<Statut>('nrp')
+  const initialStatut = (prospect.statut as Statut) ?? 'nrp'
+  const [statut, setStatut] = useState<Statut>(initialStatut)
   const [note, setNote] = useState('')
-  const [prochaine, setProchaine] = useState(suggestNrpDate(prospect.nb_tentatives ?? 0))
+  const [prochaine, setProchaine] = useState(
+    prospect.prochaine_relance ? toLocalInput(new Date(prospect.prochaine_relance)) : suggestNrpDate(prospect.nb_tentatives ?? 0)
+  )
   const [saving, setSaving] = useState(false)
   const [historique, setHistorique] = useState<Appel[]>([])
   const [showHistorique, setShowHistorique] = useState(false)
   const noteRef = useRef<HTMLTextAreaElement>(null)
+  const prochainRef = useRef<HTMLInputElement>(null)
 
   const nextNrp = (prospect.nb_tentatives ?? 0) + 1
   const nrpLabel = nextNrp === 1 ? 'NRP — 1er appel' : `NRP x${nextNrp}`
@@ -56,21 +65,25 @@ export default function CallModal({ prospect, onClose, onSave }: Props) {
     getAppels(prospect.id).then(setHistorique).catch(() => {})
   }, [prospect.id])
 
-  // Auto-suggest date when switching statut
+  // Auto-suggest date only when switching TO nrp; clearing for terminal statuts
+  const prevStatut = useRef<Statut>(initialStatut)
   useEffect(() => {
+    const prev = prevStatut.current
+    prevStatut.current = statut
+    if (statut === prev) return
     if (statut === 'nrp') {
       setProchaine(suggestNrpDate(prospect.nb_tentatives ?? 0))
-    } else if (statut === 'a_rappeler' || statut === 'rdv' || statut === 'no_show' || statut === 'en_attente') {
-      setProchaine(prospect.prochaine_relance?.slice(0, 16) ?? '')
-    } else {
+    } else if (!['a_rappeler', 'rdv', 'no_show', 'en_attente'].includes(statut)) {
       setProchaine('')
     }
+    // for rdv/a_rappeler/no_show/en_attente: keep whatever is in the field
   }, [statut])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
       if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA' && (e.target as HTMLElement).tagName !== 'INPUT') handleSave()
+      if (e.key === 'Enter' && e.ctrlKey && (e.target as HTMLElement).tagName === 'TEXTAREA') handleSave()
       if (e.key === 'g' && (e.ctrlKey || e.metaKey) && prospect.fiche_google) {
         e.preventDefault()
         window.open(prospect.fiche_google, '_blank')
@@ -91,8 +104,10 @@ export default function CallModal({ prospect, onClose, onSave }: Props) {
   async function handleSave() {
     if (saving) return
     setSaving(true)
+    // Read directly from DOM to avoid stale closure on prochaine state
+    const prochainValue = prochainRef.current?.value ?? prochaine
     try {
-      await onSave(prospect.id, statut, note, prochaine)
+      await onSave(prospect.id, statut, note, prochainValue)
       onClose()
     } finally {
       setSaving(false)
@@ -252,8 +267,16 @@ export default function CallModal({ prospect, onClose, onSave }: Props) {
           {/* Prochaine relance */}
           {(statut === 'nrp' || statut === 'a_rappeler' || statut === 'rdv' || statut === 'no_show' || statut === 'en_attente') && (
             <div className="space-y-1.5">
+              {prochaine && (() => {
+                const d = new Date(prochaine)
+                const days = Math.round((new Date(d).setHours(0,0,0,0) - new Date().setHours(0,0,0,0)) / 86400000)
+                const label = days === 0 ? "Aujourd'hui" : days === 1 ? 'Demain' : days < 0 ? `Il y a ${Math.abs(days)}j` : `Dans ${days} jour${days > 1 ? 's' : ''}`
+                const color = days <= 0 ? 'text-orange-400' : days <= 2 ? 'text-yellow-400' : 'text-gray-500'
+                return <p className={`text-xs font-medium px-1 ${color}`}>{label}</p>
+              })()}
               <input
                 type="datetime-local"
+                ref={prochainRef}
                 value={prochaine}
                 onChange={e => setProchaine(e.target.value)}
                 className="w-full bg-gray-800/40 border border-gray-700/50 rounded-xl px-4 py-3 text-sm text-gray-100 focus:outline-none focus:border-blue-500/40 transition-colors [color-scheme:dark]"
@@ -284,7 +307,7 @@ export default function CallModal({ prospect, onClose, onSave }: Props) {
             {saving ? 'Enregistrement...' : `Enregistrer — ${getStatutConfig(statut).label}`}
           </button>
         </div>
-        <p className="text-center text-[11px] text-gray-700 pb-4">1–0 statut · ⌘G fiche · Entrée enregistrer · Échap fermer</p>
+        <p className="text-center text-[11px] text-gray-700 pb-4">1–0 statut · ⌘G fiche · Entrée enregistrer · Ctrl+Entrée depuis la note · Échap fermer</p>
       </div>
     </div>
   )
