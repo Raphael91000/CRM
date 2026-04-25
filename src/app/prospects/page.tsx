@@ -227,16 +227,14 @@ function ProspectsInner() {
   async function handleSaveCall(id: string, statut: Statut, note: string, prochaine: string) {
     const current = prospects.find(p => p.id === id)
     try {
-      await Promise.all([
-        updateProspect(id, {
-          statut,
-          note: note || null,
-          derniere_relance: new Date().toISOString(),
-          prochaine_relance: localInputToISO(prochaine),
-          nb_tentatives: statut === 'nrp' ? (current?.nb_tentatives ?? 0) + 1 : 0,
-        }),
-        addAppel({ prospectId: id, statut, note }),
-      ])
+      await addAppel({ prospectId: id, statut, note })
+      await updateProspect(id, {
+        statut,
+        note: note || null,
+        derniere_relance: new Date().toISOString(),
+        prochaine_relance: localInputToISO(prochaine),
+        nb_tentatives: statut === 'nrp' ? (current?.nb_tentatives ?? 0) + 1 : 0,
+      })
       toast('Appel enregistré')
       notifyChanged()
       await load()

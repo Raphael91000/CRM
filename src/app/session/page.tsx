@@ -18,14 +18,14 @@ function fmtDate(d: string) {
   })
 }
 
-function skipWeekend(d: Date): Date {
-  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1)
-  return d
-}
-
 function toLocalInput(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function skipWeekend(d: Date): Date {
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1)
+  return d
 }
 
 function suggestNrpDate(nbTentatives: number): string {
@@ -139,16 +139,14 @@ export default function SessionPage() {
     if (!current || saving) return
     setSaving(true)
     try {
-      await Promise.all([
-        updateProspect(current.id, {
-          statut,
-          note: note || null,
-          derniere_relance: new Date().toISOString(),
-          prochaine_relance: localInputToISO(prochaine),
-          nb_tentatives: statut === 'nrp' ? (current.nb_tentatives ?? 0) + 1 : 0,
-        }),
-        addAppel({ prospectId: current.id, statut, note }),
-      ])
+      await addAppel({ prospectId: current.id, statut, note })
+      await updateProspect(current.id, {
+        statut,
+        note: note || null,
+        derniere_relance: new Date().toISOString(),
+        prochaine_relance: localInputToISO(prochaine),
+        nb_tentatives: statut === 'nrp' ? (current.nb_tentatives ?? 0) + 1 : 0,
+      })
       toast('Appel enregistré')
       window.dispatchEvent(new CustomEvent('prospects-changed'))
       setDone(d => d + 1)

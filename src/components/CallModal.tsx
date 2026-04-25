@@ -104,8 +104,8 @@ export default function CallModal({ prospect, onClose, onSave }: Props) {
   async function handleSave() {
     if (saving) return
     setSaving(true)
-    // Read directly from DOM to avoid stale closure on prochaine state
     const prochainValue = prochainRef.current?.value ?? prochaine
+    console.log('[modal] handleSave appelé, prochainValue:', prochainValue, 'prochaine state:', prochaine)
     try {
       await onSave(prospect.id, statut, note, prochainValue)
       onClose()

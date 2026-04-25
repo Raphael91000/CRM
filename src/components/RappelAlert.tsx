@@ -52,16 +52,14 @@ export default function RappelAlert() {
 
   async function handleSaveCall(id: string, statut: Statut, note: string, prochaine: string) {
     const current = alerts.find(p => p.id === id)
-    await Promise.all([
-      updateProspect(id, {
-        statut,
-        note: note || null,
-        derniere_relance: new Date().toISOString(),
-        prochaine_relance: localInputToISO(prochaine),
-        nb_tentatives: (current?.nb_tentatives ?? 0) + 1,
-      }),
-      addAppel({ prospectId: id, statut, note }),
-    ])
+    await addAppel({ prospectId: id, statut, note })
+    await updateProspect(id, {
+      statut,
+      note: note || null,
+      derniere_relance: new Date().toISOString(),
+      prochaine_relance: localInputToISO(prochaine),
+      nb_tentatives: (current?.nb_tentatives ?? 0) + 1,
+    })
     toast('Appel enregistré')
     window.dispatchEvent(new CustomEvent('prospects-changed'))
     dismiss(id)
