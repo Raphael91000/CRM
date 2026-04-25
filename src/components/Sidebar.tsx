@@ -28,12 +28,13 @@ export default function Sidebar() {
   }, [pathname])
 
   const fetchCounts = useCallback(async () => {
-    const { data } = await supabase.from('prospects').select('statut')
-    if (!data) return
-    const c: Counts = { total: data.length }
-    for (const row of data) {
-      c[row.statut] = (c[row.statut] ?? 0) + 1
-    }
+    const statuts: Statut[] = ['nouveau', 'nrp', 'a_rappeler', 'rdv', 'no_show', 'demo_envoyee', 'en_attente', 'pas_interesse', 'deja_site', 'close', 'poubelle']
+    const [totalRes, ...statutRes] = await Promise.all([
+      supabase.from('prospects').select('*', { count: 'exact', head: true }),
+      ...statuts.map(s => supabase.from('prospects').select('*', { count: 'exact', head: true }).eq('statut', s)),
+    ])
+    const c: Counts = { total: totalRes.count ?? 0 }
+    statuts.forEach((s, i) => { c[s] = statutRes[i].count ?? 0 })
     setCounts(c)
   }, [])
 
