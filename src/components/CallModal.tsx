@@ -105,7 +105,6 @@ export default function CallModal({ prospect, onClose, onSave }: Props) {
     if (saving) return
     setSaving(true)
     const prochainValue = prochainRef.current?.value ?? prochaine
-    console.log('[modal] handleSave appelé, prochainValue:', prochainValue, 'prochaine state:', prochaine)
     try {
       await onSave(prospect.id, statut, note, prochainValue)
       onClose()

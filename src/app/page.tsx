@@ -399,8 +399,10 @@ export default function DashboardPage() {
     await load()
   }
 
-  // Daily stats
-  const todayCalls = prospects.filter(p => isToday(p.derniere_relance))
+  // Daily stats — only real cold calls (not no_show/close/demo outcomes)
+  const COLD_CALL_STATUTS: Statut[] = ['nrp', 'a_rappeler', 'pas_interesse', 'deja_site', 'rdv']
+  const todayAll = prospects.filter(p => isToday(p.derniere_relance))
+  const todayCalls = todayAll.filter(p => COLD_CALL_STATUTS.includes(p.statut))
   const appelsAujourdhui = todayCalls.length
   const nrpDuJour = todayCalls.filter(p => p.statut === 'nrp').length
   const decroches = appelsAujourdhui - nrpDuJour
@@ -420,7 +422,7 @@ export default function DashboardPage() {
   const nouveaux      = prospects.filter(p => p.statut === 'nouveau')
 
   // Flat list for keyboard navigation (same order as sections)
-  const allVisible = [...rdvAujourdhui, ...noShow, ...aRappeler, ...nouveaux]
+  const allVisible = [...rdvAujourdhui, ...noShow, ...aRappeler]
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -522,17 +524,6 @@ export default function DashboardPage() {
         onCall={setSelected}
         onPoubelle={handlePoubelle}
         emptyText="Aucun rappel prevu aujourd'hui."
-        focusedId={focusedId}
-      />
-
-      {/* Nouveaux */}
-      <Section
-        title="Nouveaux"
-        count={nouveaux.length}
-        prospects={nouveaux}
-        onCall={setSelected}
-        onPoubelle={handlePoubelle}
-        emptyText="Aucun nouveau prospect."
         focusedId={focusedId}
       />
 

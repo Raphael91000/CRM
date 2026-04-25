@@ -24,8 +24,6 @@ export function getStatutColor(statut: Statut): string {
   return CONFIG[statut]?.color ?? '#6b7280'
 }
 
-export const CALL_STATUTS: Statut[] = ['nrp', 'a_rappeler', 'rdv', 'no_show', 'demo_envoyee', 'en_attente', 'pas_interesse', 'deja_site', 'close']
-
 export const ALL_STATUTS = Object.entries(CONFIG).map(([value, cfg]) => ({
   value: value as Statut,
   label: cfg.label,

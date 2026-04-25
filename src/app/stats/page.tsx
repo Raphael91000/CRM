@@ -34,6 +34,9 @@ function periodStart(period: Period): Date {
   return new Date(now.getFullYear(), 0, 1)
 }
 
+// Statuts qui résultent d'un vrai appel cold call (pas d'une action post-RDV)
+const CALL_STATUTS: Statut[] = ['nrp', 'a_rappeler', 'pas_interesse', 'deja_site', 'rdv']
+
 function filterByPeriod(prospects: Prospect[], period: Period): Prospect[] {
   const start = periodStart(period)
   return prospects.filter(p => p.derniere_relance && new Date(p.derniere_relance) >= start)
@@ -205,7 +208,8 @@ export default function StatsPage() {
   useEffect(() => { setSelectedBar(null) }, [period])
 
   const periodProspects = useMemo(() => filterByPeriod(all, period), [all, period])
-  const barData = useMemo(() => buildBarData(periodProspects, period), [periodProspects, period])
+  const callProspects = useMemo(() => periodProspects.filter(p => CALL_STATUTS.includes(p.statut)), [periodProspects])
+  const barData = useMemo(() => buildBarData(callProspects, period), [callProspects, period])
 
   const statusData = useMemo(() => {
     const counts: Partial<Record<Statut, number>> = {}
@@ -217,8 +221,9 @@ export default function StatsPage() {
       .sort((a, b) => b.value - a.value)
   }, [periodProspects])
 
-  const nrpCount = periodProspects.filter(p => p.statut === 'nrp').length
-  const rdvCount = periodProspects.filter(p => p.statut === 'rdv').length
+  const callCount = callProspects.length
+  const rdvCount = periodProspects.filter(p => p.statut === 'rdv' || p.statut === 'no_show').length
+  const noShowCount = periodProspects.filter(p => p.statut === 'no_show').length
   const closeCount = periodProspects.filter(p => p.statut === 'close').length
 
   if (loading) {
@@ -261,26 +266,26 @@ export default function StatsPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           label="Appels"
-          value={String(periodProspects.length)}
-          sub="sur la periode"
+          value={String(callCount)}
+          sub="vrais appels passes"
           color="text-white"
-        />
-        <StatCard
-          label="NRP"
-          value={String(nrpCount)}
-          sub="ne repondent pas"
-          color="text-orange-400"
         />
         <StatCard
           label="RDV"
           value={String(rdvCount)}
-          sub="rendez-vous fixes"
+          sub={callCount > 0 ? `${Math.round((rdvCount / callCount) * 100)}% des appels` : 'rendez-vous fixes'}
           color="text-green-400"
         />
         <StatCard
-          label="Closes"
+          label="No Show"
+          value={String(noShowCount)}
+          sub={rdvCount > 0 ? `${Math.round((noShowCount / rdvCount) * 100)}% des RDV` : '—'}
+          color="text-red-400"
+        />
+        <StatCard
+          label="Signatures"
           value={String(closeCount)}
-          sub="clients closes"
+          sub={rdvCount > 0 ? `${Math.round((closeCount / rdvCount) * 100)}% des RDV` : 'clients signes'}
           color="text-emerald-400"
         />
       </div>
@@ -288,7 +293,7 @@ export default function StatsPage() {
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Bar chart */}
         <div className="lg:col-span-2 bg-[#111827] border border-gray-800 rounded-2xl p-6">
-          <h2 className="text-sm font-semibold text-white">Appels par periode</h2>
+          <h2 className="text-sm font-semibold text-white">Appels cold call</h2>
           <p className="text-xs text-gray-600 mb-6">
             {period === 'day' && "Aujourd'hui par heure"}
             {period === 'week' && 'Cette semaine par jour'}
